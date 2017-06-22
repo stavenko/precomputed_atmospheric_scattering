@@ -87,21 +87,17 @@ want to write):
 
 const char kGeometryShader[] = R"(
     #version 330
-    #extension GL_EXT_geometry_shader4 : enable
+    // #extension GL_EXT_geometry_shader4 : enable
     layout(triangles) in;
     layout(triangle_strip, max_vertices = 3) out;
     uniform int layer;
     void main() {
-      gl_Position = gl_PositionIn[0];
-      gl_Layer = layer;
-      EmitVertex();
-      gl_Position = gl_PositionIn[1];
-      gl_Layer = layer;
-      EmitVertex();
-      gl_Position = gl_PositionIn[2];
-      gl_Layer = layer;
-      EmitVertex();
-      EndPrimitive();
+    for(int i =0; i < 3; ++i){
+        gl_Position = gl_in[i].gl_Position;
+        gl_Layer = layer;
+        EmitVertex();
+    }
+    EndPrimitive();
     })";
 
 /*
@@ -220,10 +216,12 @@ shader).
 */
 
 const char kAtmosphereShader[] = R"(
+#ifndef MAIN_
     uniform sampler2D transmittance_texture;
+    uniform sampler2D irradiance_texture;
     uniform sampler3D scattering_texture;
     uniform sampler3D single_mie_scattering_texture;
-    uniform sampler2D irradiance_texture;
+#endif
     #ifdef RADIANCE_API_ENABLED
     RadianceSpectrum GetSolarRadiance() {
       return ATMOSPHERE.solar_irradiance /
@@ -232,22 +230,17 @@ const char kAtmosphereShader[] = R"(
     RadianceSpectrum GetSkyRadiance(
         Position camera, Direction view_ray, Length shadow_length,
         Direction sun_direction, out DimensionlessSpectrum transmittance) {
-      return GetSkyRadiance(ATMOSPHERE, transmittance_texture,
-          scattering_texture, single_mie_scattering_texture,
-          camera, view_ray, shadow_length, sun_direction, transmittance);
+        return GetSkyRadiance(ATMOSPHERE, camera, view_ray, shadow_length, 
+        sun_direction, transmittance);
     }
-    RadianceSpectrum GetSkyRadianceToPoint(
-        Position camera, Position point, Length shadow_length,
-        Direction sun_direction, out DimensionlessSpectrum transmittance) {
-      return GetSkyRadianceToPoint(ATMOSPHERE, transmittance_texture,
-          scattering_texture, single_mie_scattering_texture,
-          camera, point, shadow_length, sun_direction, transmittance);
-    }
+    // RadianceSpectrum GetSkyRadianceToPoint(
+    //    Position camera, Position point, Length shadow_length,
+    //    Direction sun_direction, out DimensionlessSpectrum transmittance);
+
     IrradianceSpectrum GetSunAndSkyIrradiance(
        Position p, Direction normal, Direction sun_direction,
        out IrradianceSpectrum sky_irradiance) {
-      return GetSunAndSkyIrradiance(ATMOSPHERE, transmittance_texture,
-          irradiance_texture, p, normal, sun_direction, sky_irradiance);
+      return GetSunAndSkyIrradiance(ATMOSPHERE, p, normal, sun_direction, sky_irradiance);
     }
     #endif
     Luminance3 GetSolarLuminance() {
@@ -258,16 +251,14 @@ const char kAtmosphereShader[] = R"(
     Luminance3 GetSkyLuminance(
         Position camera, Direction view_ray, Length shadow_length,
         Direction sun_direction, out DimensionlessSpectrum transmittance) {
-      return GetSkyRadiance(ATMOSPHERE, transmittance_texture,
-          scattering_texture, single_mie_scattering_texture,
+      return GetSkyRadiance(ATMOSPHERE, 
           camera, view_ray, shadow_length, sun_direction, transmittance) *
           SKY_SPECTRAL_RADIANCE_TO_LUMINANCE;
     }
     Luminance3 GetSkyLuminanceToPoint(
         Position camera, Position point, Length shadow_length,
         Direction sun_direction, out DimensionlessSpectrum transmittance) {
-      return GetSkyRadianceToPoint(ATMOSPHERE, transmittance_texture,
-          scattering_texture, single_mie_scattering_texture,
+      return GetSkyRadianceToPoint( 
           camera, point, shadow_length, sun_direction, transmittance) *
           SKY_SPECTRAL_RADIANCE_TO_LUMINANCE;
     }
@@ -275,7 +266,7 @@ const char kAtmosphereShader[] = R"(
        Position p, Direction normal, Direction sun_direction,
        out IrradianceSpectrum sky_irradiance) {
       IrradianceSpectrum sun_irradiance = GetSunAndSkyIrradiance(
-          ATMOSPHERE, transmittance_texture, irradiance_texture, p, normal,
+          ATMOSPHERE, p, normal,
           sun_direction, sky_irradiance);
       sky_irradiance *= SKY_SPECTRAL_RADIANCE_TO_LUMINANCE;
       return sun_irradiance * SUN_SPECTRAL_RADIANCE_TO_LUMINANCE;
@@ -340,10 +331,12 @@ class Program {
   }
 
   ~Program() {
+    std::cout << "delete program" << program_ << "\n";
     glDeleteProgram(program_);
   }
 
   void Use() const {
+    std::cout << "Use program " << program_ << "\n";
     glUseProgram(program_);
   }
 
@@ -370,8 +363,6 @@ class Program {
     glBindTexture(GL_TEXTURE_3D, texture);
     BindInt(sampler_uniform_name, texture_unit);
   }
-
- private:
   static void CheckShader(GLuint shader) {
     GLint compile_status;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_status);
@@ -380,6 +371,17 @@ class Program {
     }
     assert(compile_status == GL_TRUE);
   }
+
+  static void CheckProgram(GLuint program) {
+    GLint link_status;
+    glGetProgramiv(program, GL_LINK_STATUS, &link_status);
+    if (link_status == GL_FALSE) {
+      PrintProgramLog(program);
+    }
+    assert(link_status == GL_TRUE);
+    assert(glGetError() == 0);
+  }
+ private:
 
   static void PrintShaderLog(GLuint shader) {
     GLint log_length;
@@ -392,15 +394,6 @@ class Program {
     }
   }
 
-  static void CheckProgram(GLuint program) {
-    GLint link_status;
-    glGetProgramiv(program, GL_LINK_STATUS, &link_status);
-    if (link_status == GL_FALSE) {
-      PrintProgramLog(program);
-    }
-    assert(link_status == GL_TRUE);
-    assert(glGetError() == 0);
-  }
 
   static void PrintProgramLog(GLuint program) {
     GLint log_length;
@@ -461,22 +454,6 @@ GLuint NewTexture3d(int width, int height, int depth, GLenum format,
 blending separately enabled or disabled for each color attachment):
 */
 
-void DrawQuad(const std::vector<bool>& enable_blend) {
-  for (unsigned int i = 0; i < enable_blend.size(); ++i) {
-    if (enable_blend[i]) {
-      glEnablei(GL_BLEND, i);
-    }
-  }
-  glBegin(GL_TRIANGLE_STRIP);
-  glVertex2f(-1.0, -1.0);
-  glVertex2f(+1.0, -1.0);
-  glVertex2f(-1.0, +1.0);
-  glVertex2f(+1.0, +1.0);
-  glEnd();
-  for (unsigned int i = 0; i < enable_blend.size(); ++i) {
-    glDisablei(GL_BLEND, i);
-  }
-}
 
 /*
 <p>Finally, we need a utility function to compute the value of the conversion
@@ -586,6 +563,22 @@ folding and propagation optimizations in the GLSL compiler), concatenated with
 initialize them.
 */
 
+static const GLfloat g_vertex_buffer_data[] = {
+   -1.0f, -1.0f,
+   1.0f, -1.0f,
+   1.0f,  1.0f,
+
+   -1.0f, -1.0f,
+   1.0f,  1.0f,
+   -1.0f, 1.0f
+};
+void Model::CheckProgram(uint32_t Id){
+  Program::CheckProgram(Id);
+}
+void Model::CheckShader(uint32_t shaderId){
+  Program::CheckShader(shaderId);
+}
+
 Model::Model(
     const std::vector<double>& wavelengths,
     const std::vector<double>& solar_irradiance,
@@ -616,6 +609,10 @@ Model::Model(
     return "vec3(" + std::to_string(r) + "," + std::to_string(g) + "," +
         std::to_string(b) + ")";
   };
+
+
+  std::cout << "Combine scattering textures" << combine_scattering_textures << "\n";
+
   auto density_layer =
       [length_unit_in_meters](const DensityProfileLayer& layer) {
         return "DensityProfileLayer(" +
@@ -663,14 +660,23 @@ Model::Model(
   // A lambda that creates a GLSL header containing our atmosphere computation
   // functions, specialized for the given atmosphere parameters and for the 3
   // wavelengths in 'lambdas'.
-  glsl_header_factory_ = [=](const vec3& lambdas) {
-    return
-      "#version 330\n"
+  glsl_header_factory_ = [=](const vec3& lambdas, bool main=false) {
+
+    std::string str = main?"#define MAIN_\n":"";
+    std::string ver = main?"":"#version 330\n";
+    std::cout << "[" << main << "]: " << ver << "\n"; 
+    std::string blk = 
       "#define IN(x) const in x\n"
       "#define OUT(x) out x\n"
       "#define TEMPLATE(x)\n"
       "#define TEMPLATE_ARGUMENT(x)\n"
-      "#define assert(x)\n"
+      "#define assert(x)\n" ;
+      
+
+    return
+      ver +
+      blk +
+      str + 
       "const int TRANSMITTANCE_TEXTURE_WIDTH = " +
           std::to_string(TRANSMITTANCE_TEXTURE_WIDTH) + ";\n" +
       "const int TRANSMITTANCE_TEXTURE_HEIGHT = " +
@@ -742,20 +748,73 @@ Model::Model(
 
   // Create and compile the shader providing our API.
   std::string shader =
-      glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}) +
+      glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}, true) +
       (precompute_illuminance ? "" : "#define RADIANCE_API_ENABLED\n") +
       kAtmosphereShader;
+  
+
+  atmosphere_shader_string_ = shader;
   const char* source = shader.c_str();
   atmosphere_shader_ = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(atmosphere_shader_, 1, &source, NULL);
   glCompileShader(atmosphere_shader_);
+ 
+  // Program::CheckShader(atmosphere_shader_); 
+
+  glGenVertexArrays(1, &VertexArrayID);
+  glBindVertexArray(VertexArrayID);
+  glGenBuffers(1, &buffer_);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer_);
+  std::cout << "create buufer of size " << sizeof(g_vertex_buffer_data) << "\n";
+  glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+  glBindVertexArray(0);
+}
+void Model::reinitQuad(){
+  /*
+  glGenVertexArrays(1, &VertexArrayID);
+  glBindVertexArray(VertexArrayID);
+  glGenBuffers(1, &buffer_);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer_);
+  std::cout << "create buufer of size " << sizeof(g_vertex_buffer_data4) << "\n";
+  glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data4), g_vertex_buffer_data4, GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+  glBindVertexArray(0);
+*/
 }
 
 /*
 <p>The destructor is trivial:
 */
 
+void Model::DrawQuad(const std::vector<bool>& enable_blend) {
+  for (unsigned int i = 0; i < enable_blend.size(); ++i) {
+    if (enable_blend[i]) {
+      glEnablei(GL_BLEND, i);
+    }
+  }
+  std::cout << "bind vao" << VertexArrayID << "\n";
+  glBindVertexArray(VertexArrayID);
+
+  glEnableVertexAttribArray(0);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer_);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  if(int err = glGetError()){
+    std::cout<< "err " << err << "\n";
+  }
+
+  glDisableVertexAttribArray(0);
+  glBindVertexArray(0);
+
+  for (unsigned int i = 0; i < enable_blend.size(); ++i) {
+    glDisablei(GL_BLEND, i);
+  }
+}
 Model::~Model() {
+  std::cout << "Delte model!!!\n";
   glDeleteTextures(1, &transmittance_texture_);
   glDeleteTextures(1, &scattering_texture_);
   if (optional_single_mie_scattering_texture_ != 0) {
@@ -866,6 +925,7 @@ void Model::Init(unsigned int num_scattering_orders) {
         delta_mie_scattering_texture, delta_scattering_density_texture,
         delta_multiple_scattering_texture, lambdas, luminance_from_radiance,
         false /* blend */, num_scattering_orders);
+    std::cout << "nn" << "\n";
   } else {
     constexpr double kLambdaMin = 360.0;
     constexpr double kLambdaMax = 830.0;
@@ -907,7 +967,7 @@ void Model::Init(unsigned int num_scattering_orders) {
     // transmittance for the 3 wavelengths used at the last iteration. But we
     // want the transmittance at kLambdaR, kLambdaG, kLambdaB instead, so we
     // must recompute it here for these 3 wavelengths:
-    std::string header = glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB});
+    std::string header = glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}, false);
     Program compute_transmittance(
         kVertexShader, header + kComputeTransmittanceShader);
     glFramebufferTexture(
@@ -916,9 +976,11 @@ void Model::Init(unsigned int num_scattering_orders) {
     glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
     compute_transmittance.Use();
     DrawQuad({});
+    // std::cout << "other way" << "\n";
   }
 
   // Delete the temporary resources allocated at the begining of this method.
+  std::cout << "ok - lets render scene" << "\n";
   glUseProgram(0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glDeleteFramebuffers(1, &fbo);
@@ -926,7 +988,6 @@ void Model::Init(unsigned int num_scattering_orders) {
   glDeleteTextures(1, &delta_mie_scattering_texture);
   glDeleteTextures(1, &delta_rayleigh_scattering_texture);
   glDeleteTextures(1, &delta_irradiance_texture);
-  assert(glGetError() == 0);
 }
 
 /*
@@ -1014,19 +1075,26 @@ void Model::Precompute(
   // The precomputations require specific GLSL programs, for each precomputation
   // step. We create and compile them here (they are automatically destroyed
   // when this method returns, via the Program destructor).
-  std::string header = glsl_header_factory_(lambdas);
+  std::string header = glsl_header_factory_(lambdas, false);
+  std::cout << "prepare shader 0\n";
   Program compute_transmittance(
       kVertexShader, header + kComputeTransmittanceShader);
+  std::cout << "prepare shader 1\n";
   Program compute_direct_irradiance(
       kVertexShader, header + kComputeDirectIrradianceShader);
+  std::cout << "prepare shader 2\n";
   Program compute_single_scattering(kVertexShader, kGeometryShader,
       header + kComputeSingleScatteringShader);
+  std::cout << "prepare shader 3\n";
   Program compute_scattering_density(kVertexShader, kGeometryShader,
       header + kComputeScatteringDensityShader);
+  std::cout << "prepare shader 4\n";
   Program compute_indirect_irradiance(
       kVertexShader, header + kComputeIndirectIrradianceShader);
+  std::cout << "prepare shader 4\n";
   Program compute_multiple_scattering(kVertexShader, kGeometryShader,
       header + kComputeMultipleScatteringShader);
+  std::cout << "prepare shader 5\n";
 
   const GLuint kDrawBuffers[4] = {
     GL_COLOR_ATTACHMENT0,
@@ -1038,12 +1106,19 @@ void Model::Precompute(
   glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
 
   // Compute the transmittance, and store it in transmittance_texture_.
+  std:: cout << "numbers " << transmittance_texture_
+    << " " << TRANSMITTANCE_TEXTURE_WIDTH 
+    << "x" << TRANSMITTANCE_TEXTURE_HEIGHT << "\n";
   glFramebufferTexture(
       GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, transmittance_texture_, 0);
   glDrawBuffer(GL_COLOR_ATTACHMENT0);
   glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
   compute_transmittance.Use();
   DrawQuad({});
+  if(int err = glGetError()){
+    std::cout << "error: "<< err << "\n";
+    assert(false); 
+  }
 
   // Compute the direct irradiance, store it in delta_irradiance_texture and,
   // depending on 'blend', either initialize irradiance_texture_ with zeros or
@@ -1075,6 +1150,7 @@ void Model::Precompute(
         optional_single_mie_scattering_texture_, 0);
     glDrawBuffers(4, kDrawBuffers);
   } else {
+    std::cout << "Draw three\n";
     glDrawBuffers(3, kDrawBuffers);
   }
   glViewport(0, 0, SCATTERING_TEXTURE_WIDTH, SCATTERING_TEXTURE_HEIGHT);
@@ -1164,6 +1240,7 @@ void Model::Precompute(
       DrawQuad({false, true});
     }
   }
+  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, 0, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, 0, 0);

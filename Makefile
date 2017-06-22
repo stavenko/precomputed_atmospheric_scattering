@@ -98,7 +98,7 @@ output/Debug/atmosphere_demo: \
     output/Debug/atmosphere/demo/demo.o \
     output/Debug/atmosphere/demo/demo_main.o \
     output/Debug/atmosphere/model.o
-	$(GPP) $^ -pthread -lGLEW -lglut -lGL -o $@
+	$(GPP) $^ -pthread -lGLEW -lglfw -framework OpenGL  -o $@
 
 output/Debug/%.o: %.cc
 	mkdir -p $(@D)
@@ -121,6 +121,6 @@ output/Debug/atmosphere/demo/demo.o output/Release/atmosphere/demo/demo.o: \
     atmosphere/demo/demo.glsl.inc
 
 %.glsl.inc: %.glsl
-	sed -e '1i const char $(*F)_glsl[] = R"***(' -e '$$a )***";' \
+	gsed -e '1i const char $(*F)_glsl[] = R"***(' -e '$$a )***";' \
 	    -e '/^\/\*/,/\*\/$$/d' -e '/^ *\/\//d' -e '/^$$/d' $< > $@
 

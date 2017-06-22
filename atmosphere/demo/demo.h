@@ -42,16 +42,25 @@ atmosphere model and to the GLSL program used to render the scene:
 #include <memory>
 
 #include "atmosphere/model.h"
+#include <GLFW/glfw3.h>
 
 namespace atmosphere {
 namespace demo {
 
 class Demo {
  public:
-  Demo(int viewport_width, int viewport_height);
+  Demo();
+  void mainLoop();
   ~Demo();
+  static Demo *get(); 
 
+  void HandleKeyboardEvent(unsigned char key);
+  void HandleMouseClickEvent(int key, int mods);
+  void mousemove(int x, int y){
+    this->HandleMouseDragEvent(x,y);
+  }
  private:
+  GLFWwindow * window;
   enum Luminance {
     // Render the spectral radiance at kLambdaR, kLambdaG, kLambdaB.
     NONE,
@@ -67,11 +76,10 @@ class Demo {
     PRECOMPUTED
   };
 
+
   void InitModel();
   void HandleRedisplayEvent() const;
   void HandleReshapeEvent(int viewport_width, int viewport_height);
-  void HandleKeyboardEvent(unsigned char key);
-  void HandleMouseClickEvent(int button, int state, int mouse_x, int mouse_y);
   void HandleMouseDragEvent(int mouse_x, int mouse_y);
   void HandleMouseWheelEvent(int mouse_wheel_direction);
   void SetView(double view_distance_meters, double view_zenith_angle_radians,
@@ -100,6 +108,8 @@ class Demo {
   int previous_mouse_x_;
   int previous_mouse_y_;
   bool is_ctrl_key_pressed_;
+  int mouse_x, mouse_y;
+  void CheckShader(GLuint);
 };
 
 }  // namespace demo

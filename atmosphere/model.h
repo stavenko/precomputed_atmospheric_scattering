@@ -178,6 +178,8 @@ class DensityProfileLayer {
 
 class Model {
  public:
+   static void CheckShader(uint32_t shaderId);
+   static void CheckProgram(uint32_t pid);
   Model(
     // The wavelength values, in nanometers, and sorted in increasing order, for
     // which the solar_irradiance, rayleigh_scattering, mie_scattering,
@@ -283,6 +285,10 @@ class Model {
   void Init(unsigned int num_scattering_orders = 4);
 
   unsigned int GetShader() const { return atmosphere_shader_; }
+  std::string GetShaderText() const { 
+    
+    return atmosphere_shader_string_; 
+  }
 
   void SetProgramUniforms(
       unsigned int program,
@@ -304,6 +310,8 @@ class Model {
   static constexpr double kLambdaR = 680.0;
   static constexpr double kLambdaG = 550.0;
   static constexpr double kLambdaB = 440.0;
+  void DrawQuad(const std::vector<bool> &enable_blend);
+  void reinitQuad();
 
  private:
   typedef std::array<double, 3> vec3;
@@ -323,12 +331,16 @@ class Model {
 
   unsigned int num_precomputed_wavelengths_;
   bool half_precision_;
-  std::function<std::string(const vec3&)> glsl_header_factory_;
+  std::function<std::string(const vec3&, bool main)> glsl_header_factory_;
   unsigned int transmittance_texture_;
   unsigned int scattering_texture_;
   unsigned int optional_single_mie_scattering_texture_;
   unsigned int irradiance_texture_;
   unsigned int atmosphere_shader_;
+  std::string atmosphere_shader_string_;
+  unsigned int buffer_;
+  unsigned int VertexArrayID;
+  
 };
 
 }  // namespace atmosphere

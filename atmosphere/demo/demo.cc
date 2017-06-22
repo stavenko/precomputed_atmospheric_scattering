@@ -37,16 +37,17 @@ independent of our atmosphere model. The only part which is related to it is the
 <code>InitModel</code> method).
 */
 
+#include <GL/glew.h>
 #include "atmosphere/demo/demo.h"
 
-#include <GL/glew.h>
-#include <GL/freeglut.h>
 
+#include <cassert>
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include <sstream>
 #include <string>
+#include <iostream>
 #include <vector>
 
 namespace atmosphere {
@@ -72,19 +73,22 @@ constexpr double kLengthUnitInMeters = 1000.0;
 
 const char kVertexShader[] = R"(
     #version 330
+    layout(location = 0) in vec2 vertex;
     uniform mat4 model_from_view;
     uniform mat4 view_from_clip;
-    layout(location = 0) in vec4 vertex;
-    out vec3 view_ray;
+     out vec3 view_ray;
     void main() {
+      // vec3 view_ray;
+
+      vec4 vertex_ = vec4(vertex, 0.0, 1.0);
       view_ray =
-          (model_from_view * vec4((view_from_clip * vertex).xyz, 0.0)).xyz;
-      gl_Position = vertex;
+          (model_from_view * vec4((view_from_clip * vertex_).xyz, 0.0)).xyz;
+      gl_Position = vertex_;
     })";
 
 #include "atmosphere/demo/demo.glsl.inc"
 
-static std::map<int, Demo*> INSTANCES;
+// static std::map<int, Demo*> INSTANCES;
 
 }  // anonymous namespace
 
@@ -97,7 +101,26 @@ instances can be created at the same time, using the <code>INSTANCES</code>
 global variable):
 */
 
-Demo::Demo(int viewport_width, int viewport_height) :
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+{
+  if(action == GLFW_RELEASE)
+    Demo::get()->HandleMouseClickEvent(button, mods);
+  if(action == GLFW_PRESS){
+    // :w
+    // Demo::get()->press(button);
+  }
+}
+
+static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos){
+  Demo::get()->mousemove(xpos, ypos);
+}
+
+
+void charFunc(GLFWwindow *win, unsigned int key){
+  Demo::get()->HandleKeyboardEvent(key);
+}
+
+Demo::Demo() :
     use_constant_solar_spectrum_(false),
     use_ozone_(true),
     use_combined_textures_(true),
@@ -112,31 +135,55 @@ Demo::Demo(int viewport_width, int viewport_height) :
     sun_zenith_angle_radians_(1.3),
     sun_azimuth_angle_radians_(2.9),
     exposure_(10.0) {
-  glutInitWindowSize(viewport_width, viewport_height);
-  window_id_ = glutCreateWindow("Atmosphere Demo");
-  INSTANCES[window_id_] = this;
-  glewInit();
+  // glutInitWindowSize(viewport_width, viewport_height);
+  // window_id_ = glutCreateWindow("Atmosphere Demo");
+  glfwWindowHint(GLFW_SAMPLES, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy; should not be needed
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  window = glfwCreateWindow(1024, 768, "Atmosphere Demo", NULL, NULL);
+  // INSTANCES[window_id_] = this;
+  glfwMakeContextCurrent(window);
+  assert(glewInit() == GLEW_OK);
+    
+  
 
-  glutDisplayFunc([]() {
-    INSTANCES[glutGetWindow()]->HandleRedisplayEvent();
-  });
-  glutReshapeFunc([](int width, int height) {
-    INSTANCES[glutGetWindow()]->HandleReshapeEvent(width, height);
-  });
-  glutKeyboardFunc([](unsigned char key, int x, int y) {
-    INSTANCES[glutGetWindow()]->HandleKeyboardEvent(key);
-  });
-  glutMouseFunc([](int button, int state, int x, int y) {
-    INSTANCES[glutGetWindow()]->HandleMouseClickEvent(button, state, x, y);
-  });
-  glutMotionFunc([](int x, int y) {
-    INSTANCES[glutGetWindow()]->HandleMouseDragEvent(x, y);
-  });
-  glutMouseWheelFunc([](int button, int dir, int x, int y) {
-    INSTANCES[glutGetWindow()]->HandleMouseWheelEvent(dir);
-  });
+  // glutReshapeFunc([](int width, int height) {
+    // INSTANCES[glutGetWindow()]->HandleReshapeEvent(width, height);
+  // });
+  //
+  glfwSetCharCallback(window, &charFunc);
+  glfwSetCursorPosCallback(window, cursor_position_callback);
+  glfwSetMouseButtonCallback(window, mouse_button_callback);
+  // glutKeyboardFunc([](unsigned char key, int x, int y) {
+    // INSTANCES[glutGetWindow()]->HandleKeyboardEvent(key);
+  // });
+  // glutMouseFunc([](int button, int state, int x, int y) {
+    // INSTANCES[glutGetWindow()]->HandleMouseClickEvent(button, state, x, y);
+  // });
+  // glutMotionFunc([](int x, int y) {
+    // INSTANCES[glutGetWindow()]->HandleMouseDragEvent(x, y);
+  // });
+  // glutMouseWheelFunc([](int button, int dir, int x, int y) {
+    // INSTANCES[glutGetWindow()]->HandleMouseWheelEvent(dir);
+  // });
 
   InitModel();
+}
+
+Demo *Demo::get(){
+  static Demo demo;
+  return &demo;
+}
+
+void Demo::mainLoop(){
+  while (!glfwWindowShouldClose(window)){
+    
+    this->HandleRedisplayEvent();
+    glfwSwapBuffers(window);
+    glfwPollEvents();
+  }
 }
 
 /*
@@ -145,7 +192,8 @@ Demo::Demo(int viewport_width, int viewport_height) :
 
 Demo::~Demo() {
   glDeleteProgram(program_);
-  INSTANCES.erase(window_id_);
+  // INSTANCES.erase(window_id_);
+  glfwTerminate();
 }
 
 /*
@@ -154,6 +202,15 @@ is done in the following method. It starts with the creation of an atmosphere
 <code>Model</code> instance, with parameters corresponding to the Earth
 atmosphere:
 */
+
+// void Demo::CheckShader(GLuint shader) {
+  // GLint compile_status;
+  //glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_status);
+  //if (compile_status == GL_FALSE) {
+    //Model::PrintShaderLog(shader);
+  //}
+  //assert(compile_status == GL_TRUE);
+//}
 
 void Demo::InitModel() {
   // Values from "Reference Solar Spectral Irradiance: ASTM G-173", ETR column
@@ -252,7 +309,8 @@ void Demo::InitModel() {
       kLengthUnitInMeters, use_luminance_ == PRECOMPUTED ? 15 : 3,
       use_combined_textures_, use_half_precision_));
   model_->Init();
-
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_BLEND);
 /*
 <p>Then, it creates and compiles the vertex and fragment shaders used to render
 our demo scene, and link them with the <code>Model</code>'s atmosphere shader
@@ -264,14 +322,21 @@ to get the final scene rendering program:
   glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
   glCompileShader(vertex_shader);
 
+  Model::CheckShader(vertex_shader);
+
   const std::string fragment_shader_str =
       "#version 330\n" +
       std::string(use_luminance_ != NONE ? "#define USE_LUMINANCE\n" : "") +
+      model_->GetShaderText() +
       demo_glsl;
+  // std::cout << fragment_shader_str << "\n===========================================\n";
   const char* fragment_shader_source = fragment_shader_str.c_str();
   GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
   glCompileShader(fragment_shader);
+
+
+  Model::CheckShader(fragment_shader);
 
   if (program_ != 0) {
     glDeleteProgram(program_);
@@ -279,13 +344,15 @@ to get the final scene rendering program:
   program_ = glCreateProgram();
   glAttachShader(program_, vertex_shader);
   glAttachShader(program_, fragment_shader);
-  glAttachShader(program_, model_->GetShader());
+  // glAttachShader(program_, model_->GetShader());
   glLinkProgram(program_);
+  Model::CheckProgram(program_);
   glDetachShader(program_, vertex_shader);
   glDetachShader(program_, fragment_shader);
   glDetachShader(program_, model_->GetShader());
   glDeleteShader(vertex_shader);
   glDeleteShader(fragment_shader);
+  
 
 /*
 <p>Finally, it sets the uniforms of this program that can be set once and for
@@ -293,7 +360,11 @@ all (in our case this includes the <code>Model</code>'s texture uniforms,
 because our demo app does not have any texture of its own):
 */
 
+
+  // model_->reinitQuad();
+    
   glUseProgram(program_);
+  std::cout <<"use program" << program_ << "\n";
   model_->SetProgramUniforms(program_, 0, 1, 2, 3);
   double white_point_r = 1.0;
   double white_point_g = 1.0;
@@ -314,8 +385,10 @@ because our demo app does not have any texture of its own):
       tan(kSunAngularRadius),
       cos(kSunAngularRadius));
 
+  int width, height;
+  glfwGetWindowSize(window, &width, &height);
   // This sets 'view_from_clip', which only depends on the window size.
-  HandleReshapeEvent(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));
+  HandleReshapeEvent(width, height);
 }
 
 /*
@@ -357,43 +430,15 @@ void Demo::HandleRedisplayEvent() const {
       sin(sun_azimuth_angle_radians_) * sin(sun_zenith_angle_radians_),
       cos(sun_zenith_angle_radians_));
 
-  glBegin(GL_TRIANGLE_STRIP);
-  glVertex4f(-1.0, -1.0, 0.0, 1.0);
-  glVertex4f(+1.0, -1.0, 0.0, 1.0);
-  glVertex4f(-1.0, +1.0, 0.0, 1.0);
-  glVertex4f(+1.0, +1.0, 0.0, 1.0);
-  glEnd();
+  glClearColor(1.0, 0.0, 0.0, 1.0);
 
-  if (show_help_) {
-    std::stringstream help;
-    help << "\nMouse:\n"
-         << " drag, CTRL+drag, wheel: view and sun directions\n"
-         << "Keys:\n"
-         << " h: help\n"
-         << " s: solar spectrum (currently: "
-         << (use_constant_solar_spectrum_ ? "constant" : "realistic") << ")\n"
-         << " o: ozone (currently: " << (use_ozone_ ? "on" : "off") << ")\n"
-         << " t: combine textures (currently: "
-         << (use_combined_textures_ ? "on" : "off") << ")\n"
-         << " p: half precision (currently: "
-         << (use_half_precision_ ? "on" : "off") << ")\n"
-         << " l: use luminance (currently: "
-         << (use_luminance_ == PRECOMPUTED ? "precomputed" :
-             (use_luminance_ == APPROXIMATE ? "approximate" : "off")) << ")\n"
-         << " w: white balance (currently: "
-         << (do_white_balance_ ? "on" : "off") << ")\n"
-         << " +/-: increase/decrease exposure (" << exposure_ << ")\n"
-         << " 1-9: predefined views\n";
-    glUseProgram(0);
-    glColor3f(1.0, 0.0, 0.0);
-    glRasterPos2f(-0.99, 1.0);
-    glutBitmapString(GLUT_BITMAP_9_BY_15,
-        (const unsigned char*) help.str().c_str());
-    glUseProgram(program_);
-  }
 
-  glutSwapBuffers();
-  glutPostRedisplay();
+  glClear(GL_COLOR_BUFFER_BIT);
+  glUseProgram(program_);
+
+  model_->DrawQuad({});
+
+
 }
 
 /*
@@ -402,7 +447,13 @@ interact with the atmosphere model:
 */
 
 void Demo::HandleReshapeEvent(int viewport_width, int viewport_height) {
-  glViewport(0, 0, viewport_width, viewport_height);
+  std::cout << "size: " << viewport_width << "x" << viewport_height << "\n";
+  int width, height;
+  
+  glfwGetFramebufferSize(window, &width, &height);
+
+  glViewport(0, 0, width, height);
+  // glViewport(0, 0, viewport_width, viewport_height);
 
   const float kFovY = 50.0 / 180.0 * kPi;
   const float kTanFovY = tan(kFovY / 2.0);
@@ -422,7 +473,7 @@ void Demo::HandleReshapeEvent(int viewport_width, int viewport_height) {
 
 void Demo::HandleKeyboardEvent(unsigned char key) {
   if (key == 27) {
-    glutDestroyWindow(window_id_);
+    glfwDestroyWindow(window);
   } else if (key == 'h') {
     show_help_ = !show_help_;
   } else if (key == 's') {
@@ -463,24 +514,28 @@ void Demo::HandleKeyboardEvent(unsigned char key) {
     SetView(2.7e6, 0.81, 0.0, 1.57, 2.0, 10.0);
   } else if (key == '9') {
     SetView(1.2e7, 0.0, 0.0, 0.93, -2.0, 10.0);
+  } else if (key == 'z') {
+    HandleMouseWheelEvent(-1);
+  } else if (key == 'x') {
+    HandleMouseWheelEvent(1);
   }
+
+
   if (key == 's' || key == 'o' || key == 't' || key == 'p' || key == 'l' ||
       key == 'w') {
     InitModel();
   }
 }
 
-void Demo::HandleMouseClickEvent(
-    int button, int state, int mouse_x, int mouse_y) {
-  previous_mouse_x_ = mouse_x;
-  previous_mouse_y_ = mouse_y;
-  is_ctrl_key_pressed_ = (glutGetModifiers() & GLUT_ACTIVE_CTRL) != 0;
+void Demo::HandleMouseClickEvent(int button, int mods) {
 
-  if ((button == 3) || (button == 4)) {
-    if (state == GLUT_DOWN) {
-      HandleMouseWheelEvent(button == 3 ? 1 : -1);
-    }
-  }
+  is_ctrl_key_pressed_ = GLFW_MOD_CONTROL & mods;
+
+  // if ((button == 3) || (button == 4)) {
+    // if (state == GLUT_DOWN) {
+      // HandleMouseWheelEvent(button == 3 ? 1 : -1);
+    // }
+  // }
 }
 
 void Demo::HandleMouseDragEvent(int mouse_x, int mouse_y) {

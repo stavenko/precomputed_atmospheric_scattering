@@ -46,9 +46,15 @@ uniform vec3 white_point;
 uniform vec3 earth_center;
 uniform vec3 sun_direction;
 uniform vec2 sun_size;
-in vec3 view_ray;
-layout(location = 0) out vec3 color;
 
+// uniform sampler2D transmittance_texture;
+// uniform sampler3D scattering_texture;
+// uniform sampler3D single_mie_scattering_texture;
+// uniform sampler2D irradiance_texture;
+in vec3 view_ray;
+layout(location = 0) out vec4 color;
+
+//const vec3 view_ray = vec3(0.0, 1.0, 0.0);
 /*
 <p>It uses the following constants, as well as the following atmosphere
 rendering functions, defined externally (by the <code>Model</code>'s
@@ -57,24 +63,27 @@ to select either the functions returning radiance values, or those returning
 luminance values (see <a href="../model.h.html">model.h</a>).
 */
 
-const float PI = 3.14159265;
+
+
+
+// const float PI = 3.14159265;
 const vec3 kSphereCenter = vec3(0.0, 0.0, 1.0);
 const float kSphereRadius = 1.0;
 const vec3 kSphereAlbedo = vec3(0.8);
 const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
 
-#ifdef USE_LUMINANCE
-#define GetSolarRadiance GetSolarLuminance
-#define GetSkyRadiance GetSkyLuminance
-#define GetSkyRadianceToPoint GetSkyLuminanceToPoint
-#define GetSunAndSkyIrradiance GetSunAndSkyIlluminance
-#endif
+//#ifdef USE_LUMINANCE
+//#define GetSolarRadiance GetSolarLuminance
+//#define GetSkyRadiance GetSkyLuminance
+//#define GetSkyRadianceToPoint GetSkyLuminanceToPoint
+//#define GetSunAndSkyIrradiance GetSunAndSkyIlluminance
+//#endif
 
 vec3 GetSolarRadiance();
 vec3 GetSkyRadiance(vec3 camera, vec3 view_ray, float shadow_length,
     vec3 sun_direction, out vec3 transmittance);
-vec3 GetSkyRadianceToPoint(vec3 camera, vec3 point, float shadow_length,
-    vec3 sun_direction, out vec3 transmittance);
+//vec3 GetSkyRadianceToPoint(vec3 camera, vec3 point, float shadow_length,
+//    vec3 sun_direction, out vec3 transmittance);
 vec3 GetSunAndSkyIrradiance(
     vec3 p, vec3 normal, vec3 sun_direction, out vec3 sky_irradiance);
 
@@ -247,7 +256,25 @@ shadow volume of the sphere, because they are needed to get the aerial
 perspective for the sphere and the planet:
 */
 
-void main() {
+void main_();
+
+void main(){
+
+  vec2 res = vec2(1024.0*1.99, 768.0*1.99);
+  vec2 uv = gl_FragCoord.xy / res;
+  if(uv.x > 1.0 || uv.y > 1.0){
+    color = vec4(1.0);
+  }else{
+    //vec4 ttt = texture(single_mie_scattering_texture, vec3(uv, 1.0 / 32.0));
+    // vec4 tt = texture(irradiance_texture, vec2(gl_FragCoord.xy/ res));
+    //color = ttt*100.0;
+  }
+  
+   main_();
+  // color = t; 
+}
+
+void main_() {
   // Normalized view direction vector.
   vec3 view_direction = normalize(view_ray);
   // Tangent of the angle subtended by this fragment.
@@ -290,6 +317,7 @@ approximation as in <code>GetSunVisibility</code>:
     float ray_sphere_angular_distance = -ray_sphere_distance / p_dot_v;
     sphere_alpha =
         min(ray_sphere_angular_distance / fragment_angular_size, 1.0);
+    sphere_alpha = 0.01;
 
 /*
 <p>We can then compute the intersection point and its normal, and use them to
@@ -300,11 +328,11 @@ follows, by multiplying the irradiance with the sphere BRDF:
     vec3 normal = normalize(point - kSphereCenter);
 
     // Compute the radiance reflected by the sphere.
-    vec3 sky_irradiance;
-    vec3 sun_irradiance = GetSunAndSkyIrradiance(
-        point - earth_center, normal, sun_direction, sky_irradiance);
+    vec3 sky_irradianceA;
+    vec3 sun_irradianceA = GetSunAndSkyIrradiance(
+        point - earth_center, normal, sun_direction, sky_irradianceA);
     sphere_radiance =
-        kSphereAlbedo * (1.0 / PI) * (sun_irradiance + sky_irradiance);
+        kSphereAlbedo * (1.0 / PI) * (sun_irradianceA + sky_irradianceA);
 
 /*
 <p>Finally, we take into account the aerial perspective between the camera and
@@ -313,10 +341,10 @@ the sphere, which depends on the length of this segment which is in shadow:
     float shadow_length =
         max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
         lightshaft_fadein_hack;
-    vec3 transmittance;
+    vec3 transmittanceA;
     vec3 in_scatter = GetSkyRadianceToPoint(camera - earth_center,
-        point - earth_center, shadow_length, sun_direction, transmittance);
-    sphere_radiance = sphere_radiance * transmittance + in_scatter;
+        point - earth_center, shadow_length, sun_direction, transmittanceA);
+    sphere_radiance = sphere_radiance * transmittanceA + in_scatter;
   }
 
 /*
@@ -347,20 +375,23 @@ on the ground by the sun and sky visibility factors):
     vec3 sky_irradiance;
     vec3 sun_irradiance = GetSunAndSkyIrradiance(
         point - earth_center, normal, sun_direction, sky_irradiance);
+
+    // ground_radiance = sun_irradiance;
     ground_radiance = kGroundAlbedo * (1.0 / PI) * (
         sun_irradiance * GetSunVisibility(point, sun_direction) +
         sky_irradiance * GetSkyVisibility(point));
 
-    float shadow_length =
-        max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
-        lightshaft_fadein_hack;
-    vec3 transmittance;
-    vec3 in_scatter = GetSkyRadianceToPoint(camera - earth_center,
-        point - earth_center, shadow_length, sun_direction, transmittance);
-    ground_radiance = ground_radiance * transmittance + in_scatter;
-    ground_alpha = 1.0;
+     float shadow_length =
+         max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
+         lightshaft_fadein_hack;
+     shadow_length = 0.0;
+     vec3 transmittance;
+     
+     vec3 in_scatter = GetSkyRadianceToPoint(camera - earth_center,
+         point - earth_center, shadow_length, sun_direction, transmittance);
+     ground_radiance = ground_radiance * transmittance + in_scatter;
+     ground_alpha = 1.0;
   }
-
 /*
 <p>Finally, we compute the radiance and transmittance of the sky, and composite
 together, from back to front, the radiance and opacities of all the objects of
@@ -368,19 +399,20 @@ the scene:
 */
 
   // Compute the radiance of the sky.
-  float shadow_length = max(0.0, shadow_out - shadow_in) *
-      lightshaft_fadein_hack;
-  vec3 transmittance;
-  vec3 radiance = GetSkyRadiance(
-      camera - earth_center, view_direction, shadow_length, sun_direction,
-      transmittance);
-
+   float shadow_length = max(0.0, shadow_out - shadow_in) *
+       lightshaft_fadein_hack;
+   vec3 transmittance;
+   vec3 radiance = GetSkyRadiance(
+       camera - earth_center, view_direction, shadow_length, sun_direction,
+       transmittance);
   // If the view ray intersects the Sun, add the Sun radiance.
   if (dot(view_direction, sun_direction) > sun_size.y) {
     radiance = radiance + transmittance * GetSolarRadiance();
   }
   radiance = mix(radiance, ground_radiance, ground_alpha);
   radiance = mix(radiance, sphere_radiance, sphere_alpha);
-  color =
+
+   vec3 ccolor =
      pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2));
+  color = vec4(ccolor, 1.0);
 }
