@@ -103,15 +103,13 @@ global variable):
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
-  if(action == GLFW_RELEASE)
-    Demo::get()->HandleMouseClickEvent(button, mods);
-  if(action == GLFW_PRESS){
-    // :w
-    // Demo::get()->press(button);
-  }
+    Demo::get()->HandleMouseClickEvent(button, action, mods);
 }
 
-static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos){
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset){
+  Demo::get()->HandleMouseWheelEvent(yoffset);
+}
+void cursor_position_callback(GLFWwindow* window, double xpos, double ypos){
   Demo::get()->mousemove(xpos, ypos);
 }
 
@@ -156,6 +154,7 @@ Demo::Demo() :
   glfwSetCharCallback(window, &charFunc);
   glfwSetCursorPosCallback(window, cursor_position_callback);
   glfwSetMouseButtonCallback(window, mouse_button_callback);
+  glfwSetScrollCallback(window, scroll_callback);
   // glutKeyboardFunc([](unsigned char key, int x, int y) {
     // INSTANCES[glutGetWindow()]->HandleKeyboardEvent(key);
   // });
@@ -472,6 +471,7 @@ void Demo::HandleReshapeEvent(int viewport_width, int viewport_height) {
 }
 
 void Demo::HandleKeyboardEvent(unsigned char key) {
+  /*
   if (key == 27) {
     glfwDestroyWindow(window);
   } else if (key == 'h') {
@@ -514,32 +514,39 @@ void Demo::HandleKeyboardEvent(unsigned char key) {
     SetView(2.7e6, 0.81, 0.0, 1.57, 2.0, 10.0);
   } else if (key == '9') {
     SetView(1.2e7, 0.0, 0.0, 0.93, -2.0, 10.0);
-  } else if (key == 'z') {
-    HandleMouseWheelEvent(-1);
-  } else if (key == 'x') {
-    HandleMouseWheelEvent(1);
-  }
-
+  } 
 
   if (key == 's' || key == 'o' || key == 't' || key == 'p' || key == 'l' ||
       key == 'w') {
     InitModel();
   }
+  */
 }
 
-void Demo::HandleMouseClickEvent(int button, int mods) {
+void Demo::HandleMouseClickEvent(int button, int action, int mods) {
 
   is_ctrl_key_pressed_ = GLFW_MOD_CONTROL & mods;
 
-  // if ((button == 3) || (button == 4)) {
-    // if (state == GLUT_DOWN) {
-      // HandleMouseWheelEvent(button == 3 ? 1 : -1);
-    // }
-  // }
+  std::cout << "button " << button << "\n";
+  mouseButtonPressed[button] = action == GLFW_PRESS?1:0;
 }
+
+bool Demo::isClicked(int button){
+  if(mouseButtonPressed.count(button) == 0)
+    mouseButtonPressed[button] = false;
+  return mouseButtonPressed[button];
+
+}
+
 
 void Demo::HandleMouseDragEvent(int mouse_x, int mouse_y) {
   constexpr double kScale = 500.0;
+
+  if(!isClicked(0)) {
+    previous_mouse_x_ = mouse_x;
+    previous_mouse_y_ = mouse_y;
+    return;
+  } 
   if (is_ctrl_key_pressed_) {
     sun_zenith_angle_radians_ -= (previous_mouse_y_ - mouse_y) / kScale;
     sun_zenith_angle_radians_ =
@@ -555,7 +562,7 @@ void Demo::HandleMouseDragEvent(int mouse_x, int mouse_y) {
   previous_mouse_y_ = mouse_y;
 }
 
-void Demo::HandleMouseWheelEvent(int mouse_wheel_direction) {
+void Demo::HandleMouseWheelEvent(double mouse_wheel_direction) {
   if (mouse_wheel_direction < 0) {
     view_distance_meters_ *= 1.05;
   } else {

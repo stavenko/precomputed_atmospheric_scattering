@@ -2003,11 +2003,13 @@ RadianceSpectrum GetSkyRadiance(
     IN(Direction) sun_direction, OUT(DimensionlessSpectrum) transmittance){
   Length r = length(camera);
   Length rmu = dot(camera, view_ray);
+  float sqrtArg =rmu * rmu - r * r + atmosphere.top_radius *
+      atmosphere.top_radius ;
   Length distance_to_top_atmosphere_boundary = -rmu -
-      sqrt(rmu * rmu - r * r + atmosphere.top_radius * atmosphere.top_radius);
+      sqrt(sqrtArg);
   // If the viewer is in space and the view ray intersects the atmosphere, move
   // the viewer to the top atmosphere boundary (along the view ray):
-  if (distance_to_top_atmosphere_boundary > 0.0 * m) {
+  if (sqrtArg > 0.0 && distance_to_top_atmosphere_boundary > 0.0 * m) {
     camera = camera + view_ray * distance_to_top_atmosphere_boundary;
     r = atmosphere.top_radius;
     rmu += distance_to_top_atmosphere_boundary;
@@ -2187,11 +2189,12 @@ RadianceSpectrum GetSkyRadianceToPoint(
   Direction view_ray = normalize(point - camera);
   Length r = length(camera);
   Length rmu = dot(camera, view_ray);
-  Length distance_to_top_atmosphere_boundary = -rmu -
-      sqrt(rmu * rmu - r * r + ATMOSPHERE.top_radius * ATMOSPHERE.top_radius);
+  float sqrtArg = rmu * rmu - r * r + ATMOSPHERE.top_radius *
+      ATMOSPHERE.top_radius;
+  Length distance_to_top_atmosphere_boundary = -rmu - sqrt(sqrtArg);
   // If the viewer is in space and the view ray intersects the atmosphere, move
   // the viewer to the top atmosphere boundary (along the view ray):
-  if (distance_to_top_atmosphere_boundary > 0.0 * m) {
+  if (sqrtArg > 0.0 && distance_to_top_atmosphere_boundary > 0.0 * m) {
     camera = camera + view_ray * distance_to_top_atmosphere_boundary;
     r = ATMOSPHERE.top_radius;
     rmu += distance_to_top_atmosphere_boundary;
@@ -2210,8 +2213,8 @@ RadianceSpectrum GetSkyRadianceToPoint(
   IrradianceSpectrum scattering = GetCombinedScattering(
       r, mu, mu_s, nu, ray_r_mu_intersects_ground,
       single_mie_scattering);
-  // return vec3(0.0, 0.0, 1.0);
   
+  return single_mie_scattering;
 
   // Compute the r, mu, mu_s and nu parameters for the second texture lookup.
   // If shadow_length is not 0 (case of light shafts), we want to ignore the

@@ -40,6 +40,7 @@ atmosphere model and to the GLSL program used to render the scene:
 #define ATMOSPHERE_DEMO_DEMO_H_
 
 #include <memory>
+#include <map>
 
 #include "atmosphere/model.h"
 #include <GLFW/glfw3.h>
@@ -55,7 +56,8 @@ class Demo {
   static Demo *get(); 
 
   void HandleKeyboardEvent(unsigned char key);
-  void HandleMouseClickEvent(int key, int mods);
+  void HandleMouseClickEvent(int key, int, int mods);
+  void HandleMouseWheelEvent(double mouse_wheel_direction);
   void mousemove(int x, int y){
     this->HandleMouseDragEvent(x,y);
   }
@@ -81,7 +83,6 @@ class Demo {
   void HandleRedisplayEvent() const;
   void HandleReshapeEvent(int viewport_width, int viewport_height);
   void HandleMouseDragEvent(int mouse_x, int mouse_y);
-  void HandleMouseWheelEvent(int mouse_wheel_direction);
   void SetView(double view_distance_meters, double view_zenith_angle_radians,
       double view_azimuth_angle_radians, double sun_zenith_angle_radians,
       double sun_azimuth_angle_radians, double exposure);
@@ -107,9 +108,11 @@ class Demo {
 
   int previous_mouse_x_;
   int previous_mouse_y_;
+  std::map<int, bool> mouseButtonPressed;
   bool is_ctrl_key_pressed_;
   int mouse_x, mouse_y;
   void CheckShader(GLuint);
+  bool isClicked(int button);
 };
 
 }  // namespace demo

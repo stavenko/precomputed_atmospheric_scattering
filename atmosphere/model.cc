@@ -795,7 +795,6 @@ void Model::DrawQuad(const std::vector<bool>& enable_blend) {
       glEnablei(GL_BLEND, i);
     }
   }
-  std::cout << "bind vao" << VertexArrayID << "\n";
   glBindVertexArray(VertexArrayID);
 
   glEnableVertexAttribArray(0);

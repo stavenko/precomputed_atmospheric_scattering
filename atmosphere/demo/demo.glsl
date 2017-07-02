@@ -102,10 +102,13 @@ float GetSunVisibility(vec3 point, vec3 sun_direction) {
   vec3 p = point - kSphereCenter;
   float p_dot_v = dot(p, sun_direction);
   float p_dot_p = dot(p, p);
+
   float ray_sphere_center_squared_distance = p_dot_p - p_dot_v * p_dot_v;
+  float arg = kSphereRadius * kSphereRadius -
+        ray_sphere_center_squared_distance;
   float distance_to_intersection = -p_dot_v - sqrt(
       kSphereRadius * kSphereRadius - ray_sphere_center_squared_distance);
-  if (distance_to_intersection > 0.0) {
+  if (arg > 0.0 && distance_to_intersection > 0.0) {
     // Compute the distance between the view ray and the sphere, and the
     // corresponding (tangent of the) subtended angle. Finally, use this to
     // compute an approximate sun visibility.
@@ -361,12 +364,16 @@ on the ground by the sun and sky visibility factors):
   p_dot_v = dot(p, view_direction);
   p_dot_p = dot(p, p);
   float ray_earth_center_squared_distance = p_dot_p - p_dot_v * p_dot_v;
-  distance_to_intersection = -p_dot_v - sqrt(
-      earth_center.z * earth_center.z - ray_earth_center_squared_distance);
+  float sqrtArg = ATMOSPHERE.bottom_radius * ATMOSPHERE.bottom_radius -
+      ray_earth_center_squared_distance ;
+  if(sqrtArg > 0.0)
+    distance_to_intersection = -p_dot_v - sqrt(sqrtArg);
+  else
+    distance_to_intersection = -1.0;
 
   // Compute the radiance reflected by the ground, if the ray intersects it.
   float ground_alpha = 0.0;
-  vec3 ground_radiance = vec3(0.0);
+  vec3 ground_radiance = vec3(0.0, 1.0, 0.0);
   if (distance_to_intersection > 0.0) {
     vec3 point = camera + view_direction * distance_to_intersection;
     vec3 normal = normalize(point - earth_center);
@@ -390,9 +397,10 @@ on the ground by the sun and sky visibility factors):
      vec3 in_scatter = GetSkyRadianceToPoint(camera - earth_center,
          point - earth_center, shadow_length, sun_direction, transmittance);
      ground_radiance = ground_radiance * transmittance + in_scatter;
+     // ground_radiance = in_scatter;
      ground_alpha = 1.0;
   }
-/*
+  /*
 <p>Finally, we compute the radiance and transmittance of the sky, and composite
 together, from back to front, the radiance and opacities of all the objects of
 the scene:
@@ -410,7 +418,9 @@ the scene:
     radiance = radiance + transmittance * GetSolarRadiance();
   }
   radiance = mix(radiance, ground_radiance, ground_alpha);
-  radiance = mix(radiance, sphere_radiance, sphere_alpha);
+  // radiance = mix(radiance, sphere_radiance, sphere_alpha);
+  // radiance = ground_radiance;
+  
 
    vec3 ccolor =
      pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2));
